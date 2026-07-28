@@ -3,6 +3,8 @@ import {
   supabase,
   isSupabaseConfigured,
 } from "../lib/supabase";
+import { useNavigate } from "react-router-dom";
+
 
 const SignUp = () => {
   const [formData, setFormData] = useState({
@@ -26,7 +28,7 @@ const SignUp = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
     setSubmitMessage("");
   };
-
+  const navigate = useNavigate();
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
   event.preventDefault();
 
@@ -51,20 +53,27 @@ const SignUp = () => {
   console.log("Error:", error);
 
   if (error) {
-    setSubmitMessage(error.message);
-    return;
-  }
+  setSubmitMessage(error.message);
+  return;
+}
 
-  setSubmitMessage("Account created successfully.");
+setSubmitMessage("Account created successfully.");
+
+setTimeout(() => {
+  navigate("/login");
+}, 1500);
+
 };
+ 
   return (
     <div className="flex items-center justify-center bg-neutral-secondary-medium px-4 py-8">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-xl border border-default-medium bg-white p-6 shadow"
-      >
+        className="w-full max-w-sm rounded-4xl border border-default-medium bg-white px-6 py-6 shadow "
+        >
+
         <div className="mb-5">
-          <label htmlFor="fullName" className="mb-2.5 block text-sm font-medium text-heading">
+          <label htmlFor="fullName" className="mb-2.5 block text-sm font-medium text-heading px-2">
             Full Name
           </label>
           <input
@@ -73,14 +82,14 @@ const SignUp = () => {
             name="fullName"
             value={formData.fullName}
             onChange={handleChange}
-            className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand"
+            className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand font-extralight rounded-4xl"
             placeholder="John Dev"
             required
           />
         </div>
 
         <div className="mb-5">
-          <label htmlFor="email" className="mb-2.5 block text-sm font-medium text-heading">
+          <label htmlFor="email" className="mb-2.5 block text-sm font-medium text-heading px-2">
             Your email
           </label>
           <input
@@ -89,14 +98,14 @@ const SignUp = () => {
             name="email"
             value={formData.email}
             onChange={handleChange}
-            className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand"
+            className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand rounded-4xl font-extralight"
             placeholder="name@flowbite.com"
             required
           />
         </div>
 
         <div className="mb-5">
-          <label htmlFor="password" className="mb-2.5 block text-sm font-medium text-heading">
+          <label htmlFor="password" className="mb-2.5 block text-sm font-medium text-heading px-2">
             Your password
           </label>
           <div className="relative">
@@ -106,7 +115,7 @@ const SignUp = () => {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 pr-10 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand"
+              className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 pr-10 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand rounded-4xl font-extralight"
               placeholder="••••••••"
               required
             />
@@ -122,7 +131,7 @@ const SignUp = () => {
         </div>
 
         <div className="mb-5">
-          <label htmlFor="confirmPassword" className="mb-2.5 block text-sm font-medium text-heading">
+          <label htmlFor="confirmPassword" className="mb-2.5 block text-sm font-medium text-heading px-2">
             Confirm password
           </label>
           <div className="relative">
@@ -132,7 +141,7 @@ const SignUp = () => {
               name="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
-              className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 pr-10 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand"
+              className="block w-full rounded-base border border-default-medium bg-neutral-secondary-medium px-3 py-2.5 pr-10 text-sm text-heading shadow placeholder:text-body focus:border-brand focus:ring-brand rounded-4xl font-extralight"
               placeholder="••••••••"
               required
             />
@@ -142,28 +151,28 @@ const SignUp = () => {
           )}
         </div>
 
-        <button
-          type="submit"
-          disabled={!passwordsMatch || !formData.password || !formData.confirmPassword}
-          className="
-          px-4 py-2 
-          bg-linear-to-r
-          from-emerald-400
-          to-gray-500
-          border-transparent
-          text-white
+       <div
+className="flex justify-center items-center py-1">
+
+ <button
+className="
+          px-20 py-2 
+          border 
+          text-s
           rounded-4xl
           transition-all
           duration-250
           ease-in-out
-          hover:scale-105
-          active:scale-100
+          hover:bg-gray-100
+          active:bg-blue-100
+          active:border-blue-300
+          active:scale-97
           hover:cursor-pointer
-          hover:shadow-lg
-          hover:shadow-blue-500/30"
-        >
-          Create Account
-        </button>
+          hover:shadow-lg">
+            Create account
+
+</button>
+          </div>
 
         {submitMessage && (
           <p className="mt-3 text-sm text-red-600">{submitMessage}</p>
