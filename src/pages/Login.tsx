@@ -1,8 +1,11 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
-import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../components/context/AuthContext";
+import { Eye, EyeOff } from "lucide-react";
+import toast from "react-hot-toast";
 const LogIn = () => {
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -21,39 +24,26 @@ const LogIn = () => {
     setSubmitMessage("");
   };
 const navigate = useNavigate();
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+ const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  event.preventDefault();
 
+  const { error } = await login(formData.email, formData.password);
 
-    if (!isSupabaseConfigured || !supabase) {
-      setSubmitMessage("Supabase is not configured.");
-      return;
-    }
+  if (error) {
+    setSubmitMessage(error);
+    return;
+  }
 
-    const { data, error } = await supabase!.auth.signInWithPassword({
-      email: formData.email,
-      password: formData.password,
-    });
+toast.success("Logged in successfully!");
 
-    console.log("Data:", data);
-    console.log("Error:", error);
-
-    if (error) {
-      setSubmitMessage(error.message);
-      return;
-    }
-    console.log(data.user);
-    console.log(data.session);
-    setSubmitMessage("Logged in successfully.");
-      navigate("/");
-  };
-
+navigate("/dashboard");
+};
   return (
     <div>
       <div className="flex items-center justify-center bg-neutral-secondary-medium px-4 pt-8">
         <form
           onSubmit={handleSubmit}
-          className="w-full max-w-sm rounded-4xl border border-default-medium bg-white px-6 py-6 shadow "
+          className="w-full max-w-sm rounded-4xl border border-default-medium bg-white px-6 pt-6 shadow"
         >
 
           <div className="mb-5">
@@ -93,14 +83,24 @@ const navigate = useNavigate();
                 className="absolute inset-y-0 right-3 flex items-center text-body"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? "🙈" : "👁️"}
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+            <div
+            className="flex items-center px-2 pt-3">
+              <NavLink
+                        to={`/forgetPass`}
+                        className=
+                            "hover:underline transform ease-in-out text-blue-600" >
+                        Forget Passsword
+                    </NavLink>
+            </div>
           </div>
+          
 
 
 <div
-className="flex justify-center items-center py-1">
+className="flex justify-center items-center pb-6">
 
  <button
  className="

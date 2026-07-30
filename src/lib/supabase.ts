@@ -9,8 +9,7 @@ const isValidSupabaseConfig = Boolean(
   /^https?:\/\//i.test(supabaseUrl)
 );
 
-export const supabase = isValidSupabaseConfig
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  
 
 export const isSupabaseConfigured = isValidSupabaseConfig;

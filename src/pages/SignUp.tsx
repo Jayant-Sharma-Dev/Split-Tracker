@@ -4,6 +4,7 @@ import {
   isSupabaseConfigured,
 } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 
 const SignUp = () => {
@@ -44,9 +45,10 @@ const SignUp = () => {
     return;
   }
 
-  const { data, error } = await supabase.auth.signUp({
+const { data, error } = await supabase.auth.signUp({
     email: formData.email,
     password: formData.password,
+    options: { data: { full_name: formData.fullName } },
   });
 
   console.log("Data:", data);
@@ -57,11 +59,30 @@ const SignUp = () => {
   return;
 }
 
-setSubmitMessage("Account created successfully.");
+const user = data.user;
 
-setTimeout(() => {
-  navigate("/login");
-}, 1500);
+if (user) {
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .insert({
+      id: user.id,
+      name: formData.fullName,
+      email: user.email,
+      avatar_url: null,
+    });
+    if (profileError) {
+    setSubmitMessage(profileError.message);
+    return;
+  }
+}
+
+
+setSubmitMessage("Account created successfully please Log in.");
+
+await supabase.auth.signOut();
+toast.success("Account created successfully!");
+
+navigate("/dashboard");
 
 };
  
