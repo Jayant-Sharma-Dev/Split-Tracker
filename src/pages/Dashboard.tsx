@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
-import { getGroups } from "../services/group";
-import { createGroup } from "../services/group";
+import {
+  getGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+} from "../services/group";
 import { useAuth } from "../components/context/AuthContext";
+import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 type Group = {
   id: number;
@@ -11,6 +17,7 @@ type Group = {
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState<Group[]>([]);
 
   useEffect(() => {
@@ -30,8 +37,7 @@ const Dashboard = () => {
  const handleCreate = async () => {
   if (!user) return;
 
-  console.log("User ID:", user.id);
-console.log("User:", user);
+  
   const { error } = await createGroup(
     "Trip Goa",
     user.id
@@ -44,14 +50,57 @@ console.log("User:", user);
 
   loadGroups();
 };
-console.log(groups)
-  return (
-    <div>
-       <button onClick={handleCreate}>
-Create Group
-</button>
-    </div>
+ 
+
+const handleDelete = async (id: number) => {
+  const { error } = await deleteGroup(id);
+
+  if (error) {
+    console.log(error.message);
+    return;
+  }
+
+  loadGroups();
+};
+
+const handleUpdate = async (id: number) => {
+  const { error } = await updateGroup(
+    id,
+    "Updated Goa Trip"
   );
+
+  if (error) {
+    console.log(error.message);
+    return;
+  }
+
+  loadGroups();
+};
+
+return (
+  <div>
+    <button onClick={handleCreate}>
+      Create Group
+    </button>
+    <hr />
+
+    {groups.map((group) => (
+      <div key={group.id}>
+      <Link to={`/group/${group.id}`}>
+  {group.name}
+</Link>
+
+        <button onClick={() => handleUpdate(group.id)}>
+          Rename
+        </button>
+
+        <button onClick={() => handleDelete(group.id)}>
+          Delete
+        </button>
+      </div>
+    ))}
+  </div>
+);
 };
 
 export default Dashboard

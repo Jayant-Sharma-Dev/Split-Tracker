@@ -76,13 +76,10 @@ if (user) {
   }
 }
 
-
-setSubmitMessage("Account created successfully please Log in.");
-
 await supabase.auth.signOut();
-toast.success("Account created successfully!");
+toast.success("Account created successfully! Please Log in");
 
-navigate("/dashboard");
+navigate("/");
 
 };
  

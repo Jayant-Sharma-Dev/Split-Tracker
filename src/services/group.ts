@@ -52,3 +52,13 @@ export async function updateGroup(
   return { data, error };
 }
 
+export async function getGroup(id: number) {
+  const { data, error } = await supabase!
+    .from("groups")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  return { data, error };
+}
+

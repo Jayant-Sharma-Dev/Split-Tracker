@@ -7,13 +7,13 @@ import {
 import Login from "../pages/Login";
 import Signup from "../pages/SignUp";
 import Dashboard from "../pages/Dashboard";
-import Group from "../pages/Group";
 import Profile from "../pages/Profile";
 import NotFound from "../pages/NotFound";
 import RootLayout from "./RootLayout";
 import ForgetPass from "../pages/ForgetPass";
 import ProtectedRoute from "../components/context/ProtectedRoutes";
 import ResetPass from "../pages/ResetPass";
+import GroupPage from "../pages/GroupPage";
 
 const AppRoutes = () => {
     return (
@@ -28,7 +28,14 @@ const AppRoutes = () => {
 
                     <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
 
-                    <Route path="/group/:id" element={<ProtectedRoute><Group/></ProtectedRoute>} />
+                  <Route
+  path="/group/:id"
+  element={
+    <ProtectedRoute>
+      <GroupPage />
+    </ProtectedRoute>
+  }
+/>
 
                     <Route path="/profile" element={<ProtectedRoute><Profile/></ProtectedRoute>} />
 
