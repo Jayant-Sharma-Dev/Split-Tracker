@@ -78,27 +78,57 @@ const handleUpdate = async (id: number) => {
 };
 
 return (
-  <div>
-    <button onClick={handleCreate}>
-      Create Group
-    </button>
-    <hr />
+  <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="flex items-center justify-between mb-8">
+      <h1 className="text-3xl font-bold text-gray-900">
+        Your Groups
+      </h1>
 
-    {groups.map((group) => (
-      <div key={group.id}>
-      <Link to={`/group/${group.id}`}>
-  {group.name}
-</Link>
+      <button
+        onClick={handleCreate}
+        className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+      >
+        + Create Group
+      </button>
+    </div>
 
-        <button onClick={() => handleUpdate(group.id)}>
-          Rename
-        </button>
+    <div className="space-y-4">
+      {groups.length === 0 ? (
+        <p className="text-center text-gray-500 py-10">
+          No groups yet. Create your first group!
+        </p>
+      ) : (
+        groups.map((group) => (
+          <div
+            key={group.id}
+            className="flex items-center justify-between p-4 border rounded-xl bg-white shadow-sm hover:shadow-md transition"
+          >
+            <Link
+              to={`/group/${group.id}`}
+              className="text-lg font-medium text-gray-800 hover:text-blue-600"
+            >
+              {group.name}
+            </Link>
 
-        <button onClick={() => handleDelete(group.id)}>
-          Delete
-        </button>
-      </div>
-    ))}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleUpdate(group.id)}
+                className="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200"
+              >
+                Rename
+              </button>
+
+              <button
+                onClick={() => handleDelete(group.id)}
+                className="px-3 py-1.5 text-sm rounded-md bg-red-500 text-white hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
   </div>
 );
 };
