@@ -5,6 +5,7 @@ import { getProfiles } from "../services/profile";
 import { addMember, getGroupMembers } from "../services/groupMember";
 import { createExpense } from "../services/expense";
 import MemberCard from "./MemberCard";
+import { addExpenseParticipants } from "../services/expenseParticipants";
 interface Group {
   id: number;
   name: string;
@@ -80,28 +81,42 @@ const GroupPage = () => {
   };
 
   const handleSaveExpense = async () => {
-  if (!group) return;
-console.log(expense);
-console.log(group);
-  const { data, error } = await createExpense({
-    group_id: group.id,
-    title: expense.title,
-    amount: Number(expense.amount),
-    paid_by: expense.paidBy,
-    category: expense.category,
-    expense_date: expense.date,
-    notes: expense.notes,
-  });
+    if (!group) return;
+    console.log(expense);
+    console.log(group);
+    const { data, error } = await createExpense({
+      group_id: group.id,
+      title: expense.title,
+      amount: Number(expense.amount),
+      paid_by: expense.paidBy,
+      category: expense.category,
+      expense_date: expense.date,
+      notes: expense.notes,
+    });
 
-  if (error) {
-    console.log(error);
-    alert("Failed to save expense");
-    return;
-  }
+    if (error) {
+      console.log(error);
+      alert("Failed to save expense");
+      return;
+    }
+    if (!data) {
+      alert("Failed to create expense");
+      return;
+    }
 
-  console.log(data);
-  alert("Expense saved!");
-};
+    const { error: participantError } = await addExpenseParticipants(
+      data.id,
+      expense.participants
+    );
+
+    if (participantError) {
+      console.log(participantError);
+      alert("Expense saved, but participants could not be added");
+      return;
+    }
+
+    alert("Expense saved successfully");
+  };
 
   useEffect(() => {
     async function loadGroup() {
@@ -278,16 +293,16 @@ console.log(group);
                   </label>
 
                   <input
-  type="number"
-  value={expense.amount}
-  onChange={(e) =>
-    setExpense({
-      ...expense,
-      amount: e.target.value,
-    })
-  }
-  className="w-full rounded-lg border px-3 py-2"
-/>
+                    type="number"
+                    value={expense.amount}
+                    onChange={(e) =>
+                      setExpense({
+                        ...expense,
+                        amount: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
                 </div>
 
                 <div>
@@ -295,27 +310,27 @@ console.log(group);
                     Paid By
                   </label>
 
-               <select
-  value={expense.paidBy}
-  onChange={(e) =>
-    setExpense({
-      ...expense,
-      paidBy: e.target.value,
-    })
-  }
-  className="w-full rounded-lg border px-3 py-2"
->
-  <option value="">Select payer</option>
+                  <select
+                    value={expense.paidBy}
+                    onChange={(e) =>
+                      setExpense({
+                        ...expense,
+                        paidBy: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border px-3 py-2"
+                  >
+                    <option value="">Select payer</option>
 
-  {members.map((member) => (
-    <option
-      key={member.id}
-      value={member.profiles.id}
-    >
-      {member.profiles.name}
-    </option>
-  ))}
-</select>
+                    {members.map((member) => (
+                      <option
+                        key={member.id}
+                        value={member.profiles.id}
+                      >
+                        {member.profiles.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -329,28 +344,28 @@ console.log(group);
                         key={member.id}
                         className="flex items-center gap-2"
                       >
-                       <input
-  type="checkbox"
-  checked={expense.participants.includes(member.profiles.id)}
-  onChange={(e) => {
-    if (e.target.checked) {
-      setExpense({
-        ...expense,
-        participants: [
-          ...expense.participants,
-          member.profiles.id,
-        ],
-      });
-    } else {
-      setExpense({
-        ...expense,
-        participants: expense.participants.filter(
-          (id) => id !== member.profiles.id
-        ),
-      });
-    }
-  }}
-/>
+                        <input
+                          type="checkbox"
+                          checked={expense.participants.includes(member.profiles.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setExpense({
+                                ...expense,
+                                participants: [
+                                  ...expense.participants,
+                                  member.profiles.id,
+                                ],
+                              });
+                            } else {
+                              setExpense({
+                                ...expense,
+                                participants: expense.participants.filter(
+                                  (id) => id !== member.profiles.id
+                                ),
+                              });
+                            }
+                          }}
+                        />
 
                         {member.profiles.name}
                       </label>
@@ -364,21 +379,21 @@ console.log(group);
                   </label>
 
                   <select
-  value={expense.category}
-  onChange={(e) =>
-    setExpense({
-      ...expense,
-      category: e.target.value,
-    })
-  }
-  className="w-full rounded-lg border px-3 py-2"
->
-  <option>Food</option>
-  <option>Travel</option>
-  <option>Shopping</option>
-  <option>Hotel</option>
-  <option>Other</option>
-</select>
+                    value={expense.category}
+                    onChange={(e) =>
+                      setExpense({
+                        ...expense,
+                        category: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border px-3 py-2"
+                  >
+                    <option>Food</option>
+                    <option>Travel</option>
+                    <option>Shopping</option>
+                    <option>Hotel</option>
+                    <option>Other</option>
+                  </select>
                 </div>
 
                 <div>
@@ -386,17 +401,17 @@ console.log(group);
                     Date
                   </label>
 
-                 <input
-  type="date"
-  value={expense.date}
-  onChange={(e) =>
-    setExpense({
-      ...expense,
-      date: e.target.value,
-    })
-  }
-  className="w-full rounded-lg border px-3 py-2"
-/>
+                  <input
+                    type="date"
+                    value={expense.date}
+                    onChange={(e) =>
+                      setExpense({
+                        ...expense,
+                        date: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
                 </div>
 
                 <div>
@@ -404,33 +419,33 @@ console.log(group);
                     Notes
                   </label>
 
-                 <textarea
-  rows={3}
-  value={expense.notes}
-  onChange={(e) =>
-    setExpense({
-      ...expense,
-      notes: e.target.value,
-    })
-  }
-  className="w-full rounded-lg border px-3 py-2"
-/>
+                  <textarea
+                    rows={3}
+                    value={expense.notes}
+                    onChange={(e) =>
+                      setExpense({
+                        ...expense,
+                        notes: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
                 </div>
-                
 
-             <button
-  onClick={handleSaveExpense}
-  className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
->
-  Save Expense
-</button>
+
+                <button
+                  onClick={handleSaveExpense}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                >
+                  Save Expense
+                </button>
                 <pre className="mt-6 rounded-lg bg-gray-100 p-4 text-sm">
-  {JSON.stringify(expense, null, 2)}
-</pre>
+                  {JSON.stringify(expense, null, 2)}
+                </pre>
               </div>
             )}
           </div>
-          
+
         )}
 
         {activeTab === "balances" && (
