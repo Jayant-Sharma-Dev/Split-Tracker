@@ -1,53 +1,53 @@
 import {
-    BrowserRouter,
-    Routes,
-    Route,
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
 } from "react-router-dom";
-
-import Login from "../pages/Login";
-import Signup from "../pages/SignUp";
 import Dashboard from "../pages/Dashboard";
 import Profile from "../pages/Profile";
 import NotFound from "../pages/NotFound";
-import RootLayout from "./RootLayout";
 import ForgetPass from "../pages/ForgetPass";
 import ProtectedRoute from "../components/context/ProtectedRoutes";
 import ResetPass from "../pages/ResetPass";
 import GroupPage from "../pages/GroupPage";
+import Home from "../pages/Home";
 
 const AppRoutes = () => {
-    return (
-        <BrowserRouter>
-            <Routes>
+  return (
+    <BrowserRouter>
+      <Routes>
 
-                <Route element={<RootLayout />}>
-                    
-                    <Route path="/" element={<Login />} />
 
-                    <Route path="/signup" element={<Signup />} />
 
-                    <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/" element={<Home />} />
 
-                  <Route
-  path="/group/:id"
-  element={
-    <ProtectedRoute>
-      <GroupPage />
-    </ProtectedRoute>
-  }
-/>
+                    <Route path="/home" element={<Navigate to="/" replace />} />
 
-                    <Route path="/profile" element={<ProtectedRoute><Profile/></ProtectedRoute>} />
+                    <Route path="/login" element={<Navigate to="/" replace />} />
 
-                    <Route path="*" element={<NotFound />} />
-                    <Route path="/forgetPass" element={<ForgetPass/>} />
-                    <Route path="/resetPass" element={<ResetPass/>} />
+                    <Route path="/signup" element={<Navigate to="/" replace />} />
 
-                </Route>
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
 
-            </Routes>
-        </BrowserRouter>
-    );
+        <Route
+          path="/group/:id"
+          element={
+            <ProtectedRoute>
+              <GroupPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+
+        <Route path="*" element={<NotFound />} />
+        <Route path="/forgetPass" element={<ForgetPass />} />
+        <Route path="/resetPass" element={<ResetPass />} />
+
+      </Routes>
+    </BrowserRouter>
+  );
 };
 
 export default AppRoutes;

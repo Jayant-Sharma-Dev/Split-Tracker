@@ -4,7 +4,12 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "../components/context/AuthContext";
 import { Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
-const LogIn = () => {
+
+type LoginProps = {
+  onOpenSignUp?: () => void;
+};
+
+const LogIn = ({ onOpenSignUp }: LoginProps) => {
   const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
@@ -40,7 +45,7 @@ navigate("/dashboard");
 };
   return (
     <div>
-      <div className="flex items-center justify-center bg-neutral-secondary-medium px-4 pt-8">
+      <div className="flex items-center justify-center bg-neutral-secondary-medium px-4 pt-8 scrollbar-none">
         <form
           onSubmit={handleSubmit}
           className="w-full max-w-sm rounded-4xl border border-default-medium bg-white px-6 pt-6 shadow"
@@ -126,31 +131,30 @@ className="flex justify-center items-center pb-6">
             <p className="mt-3 text-sm text-red-600">{submitMessage}</p>
           )}
 
-        </form>
-      </div>
-      <div>
-        <div className="w-95 mx-auto flex items-center gap-3 mt-3">
-          <div className="flex-1 h-px bg-gray-400"></div>
-          <span className=" text-black whitespace-nowrap">
-            Don't have an account?
-          </span>
-          <div className="flex-1 h-px bg-gray-400"></div>
-        </div>
-        <div
-        className="pt-3 flex justify-center">
+          <div className="mx-auto mt-4 flex w-full items-center gap-3">
+            <div className="h-px flex-1 bg-gray-300"></div>
+            <span className="whitespace-nowrap text-sm text-black">
+              Don&apos;t have an account?
+            </span>
+            <div className="h-px flex-1 bg-gray-300"></div>
+          </div>
 
-        
-        <div
-       className=" text-s border px-8 py-0.5 rounded-3xl hover:cursor-pointer transition transform ease-in-out hover:bg-gray-100 active:scale-97  active:bg-blue-100
-          active:border-blue-300 w-fit ">
-          <NavLink
-  to="/signup"
-   
->
-  Sign Up
-</NavLink>
- </div>
-        </div>
+          <div className="pt-3 pb-4 flex justify-center">
+            <div className="text-s border px-4 py-0.5 rounded-3xl hover:cursor-pointer transition transform ease-in-out hover:bg-gray-100 active:scale-97 active:bg-blue-100 active:border-blue-300 w-fit">
+              {onOpenSignUp ? (
+                <button
+                className="block cursor-pointer" type="button" onClick={onOpenSignUp}>
+                  Sign Up
+                </button>
+              ) : (
+                <NavLink to="/signup" className="block cursor-pointer">
+                  Sign Up
+                </NavLink>
+              )}
+            </div>
+          </div>
+
+        </form>
       </div>
     </div>
   );
