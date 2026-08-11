@@ -28,21 +28,21 @@ const LogIn = ({ onOpenSignUp }: LoginProps) => {
 
     setSubmitMessage("");
   };
-const navigate = useNavigate();
- const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-  event.preventDefault();
+  const navigate = useNavigate();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-  const { error } = await login(formData.email, formData.password);
+    const { error } = await login(formData.email, formData.password);
 
-  if (error) {
-    setSubmitMessage(error);
-    return;
-  }
+    if (error) {
+      setSubmitMessage(error);
+      return;
+    }
 
-toast.success("Logged in successfully!");
+    toast.success("Logged in successfully!");
 
-navigate("/dashboard");
-};
+    navigate("/dashboard");
+  };
   return (
     <div>
       <div className="flex items-center justify-center bg-neutral-secondary-medium px-4 pt-8 scrollbar-none">
@@ -92,23 +92,23 @@ navigate("/dashboard");
               </button>
             </div>
             <div
-            className="flex items-center px-2 pt-3">
+              className="flex items-center px-2 pt-3">
               <NavLink
-                        to={`/forgetPass`}
-                        className=
-                            "hover:underline transform ease-in-out text-blue-600" >
-                        Forget Passsword
-                    </NavLink>
+                to={`/forgetPass`}
+                className=
+                "hover:underline transform ease-in-out text-blue-600" >
+                Forget Passsword
+              </NavLink>
             </div>
           </div>
-          
 
 
-<div
-className="flex justify-center items-center pb-6">
 
- <button
- className="
+          <div
+            className="flex justify-center items-center pb-6">
+
+            <button
+              className="
           px-20 py-2 
           border 
           text-s
@@ -122,9 +122,9 @@ className="flex justify-center items-center pb-6">
           active:scale-97
           hover:cursor-pointer
           hover:shadow-lg">
-            Log In
+              Log In
 
- </button>
+            </button>
           </div>
 
           {submitMessage && (
@@ -143,7 +143,7 @@ className="flex justify-center items-center pb-6">
             <div className="text-s border px-4 py-0.5 rounded-3xl hover:cursor-pointer transition transform ease-in-out hover:bg-gray-100 active:scale-97 active:bg-blue-100 active:border-blue-300 w-fit">
               {onOpenSignUp ? (
                 <button
-                className="block cursor-pointer" type="button" onClick={onOpenSignUp}>
+                  className="block cursor-pointer" type="button" onClick={onOpenSignUp}>
                   Sign Up
                 </button>
               ) : (

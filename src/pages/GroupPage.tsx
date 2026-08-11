@@ -35,16 +35,17 @@ const GroupPage = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
-  const [expense, setExpense] = useState({
-    title: "",
-    amount: "",
-    paidBy: "",
-    category: "Food",
-    date: "",
-    notes: "",
-    participants: [] as string[],
-  });
-
+const [expense, setExpense] = useState({
+  title: "",
+  amount: "",
+  paidBy: "",
+  splitMethod: "equal",
+  participants: [] as string[],
+  category: "Food",
+  date: "",
+  notes: "",
+});
+const [splitValues, setSplitValues] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<
     "members" | "expenses" | "balances"
   >("members");
@@ -332,46 +333,86 @@ const GroupPage = () => {
                     ))}
                   </select>
                 </div>
-
                 <div>
-                  <p className="mb-2 font-medium">
-                    Split Among
-                  </p>
+  <label className="mb-2 block font-medium">
+    Split Method
+  </label>
 
-                  <div className="space-y-2">
-                    {members.map((member) => (
-                      <label
-                        key={member.id}
-                        className="flex items-center gap-2"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={expense.participants.includes(member.profiles.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setExpense({
-                                ...expense,
-                                participants: [
-                                  ...expense.participants,
-                                  member.profiles.id,
-                                ],
-                              });
-                            } else {
-                              setExpense({
-                                ...expense,
-                                participants: expense.participants.filter(
-                                  (id) => id !== member.profiles.id
-                                ),
-                              });
-                            }
-                          }}
-                        />
+  <select
+    value={expense.splitMethod}
+    onChange={(e) =>
+      setExpense({
+        ...expense,
+        splitMethod: e.target.value,
+      })
+    }
+    className="w-full rounded-lg border px-3 py-2"
+  >
+    <option value="equal">Equal</option>
+    <option value="exact">Exact Amount</option>
+    <option value="percentage">Percentage</option>
+    <option value="shares">Shares</option>
+  </select>
+</div>
 
-                        {member.profiles.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                
+ <div>
+  <label className="mb-2 block font-medium">
+    Split Among
+  </label>
+
+  <div className="space-y-3">
+    {members.map((member) => {
+      const userId = member.profiles.id;
+      const selected = expense.participants.includes(userId);
+
+      return (
+        <div key={userId} className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => {
+              const updatedParticipants = e.target.checked
+                ? [...expense.participants, userId]
+                : expense.participants.filter((id) => id !== userId);
+
+              setExpense({
+                ...expense,
+                participants: updatedParticipants,
+              });
+            }}
+          />
+
+          <span className="flex-1">
+            {member.profiles.name}
+          </span>
+
+          {selected && expense.splitMethod !== "equal" && (
+            <input
+              type="number"
+              min="0"
+              value={splitValues[userId] ?? ""}
+              onChange={(e) =>
+                setSplitValues({
+                  ...splitValues,
+                  [userId]: Number(e.target.value),
+                })
+              }
+              placeholder={
+                expense.splitMethod === "exact"
+                  ? "Amount"
+                  : expense.splitMethod === "percentage"
+                  ? "%"
+                  : "Shares"
+              }
+              className="w-28 rounded-lg border px-3 py-2"
+            />
+          )}
+        </div>
+      );
+    })}
+  </div>
+</div>
 
                 <div>
                   <label className="mb-2 block font-medium">

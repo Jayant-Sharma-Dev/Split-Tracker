@@ -6,8 +6,11 @@ import {
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
+type SignUpProps = {
+  onOpenLogin?: () => void;
+};
 
-const SignUp = () => {
+const SignUp = ({ onOpenLogin }: SignUpProps) => {
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -191,6 +194,16 @@ className="
 
 </button>
           </div>
+
+          {onOpenLogin && (
+            <div className="pt-4 pb-4 flex justify-center">
+              <div className="text-s border px-4 py-0.5 rounded-3xl hover:cursor-pointer transition transform ease-in-out hover:bg-gray-100 active:scale-97 active:bg-blue-100 active:border-blue-300 w-fit">
+                <button className="block cursor-pointer" type="button" onClick={onOpenLogin}>
+                  Log In
+                </button>
+              </div>
+            </div>
+          )}
 
         {submitMessage && (
           <p className="mt-3 text-sm text-red-600">{submitMessage}</p>

@@ -84,7 +84,7 @@ const Home = () => {
             {authView === "login" ? (
               <Login onOpenSignUp={() => setAuthView("signup")} />
             ) : (
-              <SignUp />
+              <SignUp onOpenLogin={() => setAuthView("login")} />
             )}
           </div>
         </div>
