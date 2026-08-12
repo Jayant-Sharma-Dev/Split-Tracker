@@ -6,6 +6,7 @@ import { addMember, getGroupMembers } from "../services/groupMember";
 import { createExpense } from "../services/expense";
 import MemberCard from "./MemberCard";
 import { addExpenseParticipants } from "../services/expenseParticipants";
+import "../utils/settlement";
 interface Group {
   id: number;
   name: string;
