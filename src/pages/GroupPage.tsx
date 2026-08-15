@@ -1,12 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { getGroup } from "../services/group";
 import { getProfiles } from "../services/profile";
 import { addMember, getGroupMembers } from "../services/groupMember";
-import { createExpense } from "../services/expense";
+import { createExpense, getExpenses } from "../services/expense";
 import MemberCard from "./MemberCard";
-import { addExpenseParticipants } from "../services/expenseParticipants";
-import "../utils/settlement";
+import {
+  addExpenseParticipants,
+  getExpenseParticipants,
+} from "../services/expenseParticipants";
+import { addSettlement, getSettlements } from "../services/settlements";
+import {
+  calculateNetBalance,
+  splitCreditorsAndDebtors,
+  sortBalances,
+  simplifyDebts,
+} from "../utils/settlement";
 interface Group {
   id: number;
   name: string;
@@ -30,26 +54,118 @@ interface Member {
   };
 }
 
+interface RawProfileRow {
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+}
+
+interface GroupMemberRow {
+  user_id?: string;
+  profiles?: RawProfileRow | RawProfileRow[] | null;
+}
+
+interface BalanceEntry {
+  userId: string;
+  name: string;
+  email: string;
+  avatar_url: string | null;
+  paid: number;
+  owed: number;
+  net: number;
+}
+
+interface SettlementHistoryItem {
+  id: number;
+  from_user: string;
+  to_user: string;
+  amount: number;
+  created_at: string;
+}
+
+interface ExpenseRecord {
+  id: number;
+  group_id: number;
+  title: string;
+  amount: number | string;
+  paid_by: string;
+  category: string;
+  expense_date: string;
+  notes: string;
+}
+
+const PIE_COLORS = [
+  "#2563eb",
+  "#3b82f6",
+  "#60a5fa",
+  "#93c5fd",
+  "#bfdbfe",
+  "#dbeafe",
+];
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+
+const formatSignedCurrency = (value: number) => {
+  const amount = Math.abs(value);
+  const formatted = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+
+  if (value > 0) return `+ ${formatted}`;
+  if (value < 0) return `− ${formatted}`;
+  return "settled";
+};
+
+const formatTooltipCurrency = (
+  value: number | string | readonly (number | string)[] | undefined,
+  label: string
+) => {
+  const actualValue = Array.isArray(value) ? value[0] : value;
+  const numericValue = Number(actualValue ?? 0);
+
+  return [formatCurrency(numericValue), label] as [string, string];
+};
+
 const GroupPage = () => {
   const [group, setGroup] = useState<Group | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
-const [expense, setExpense] = useState({
-  title: "",
-  amount: "",
-  paidBy: "",
-  splitMethod: "equal",
-  participants: [] as string[],
-  category: "Food",
-  date: "",
-  notes: "",
-});
-const [splitValues, setSplitValues] = useState<Record<string, number>>({});
+  const [expense, setExpense] = useState({
+    title: "",
+    amount: "",
+    paidBy: "",
+    splitMethod: "equal",
+    participants: [] as string[],
+    category: "Food",
+    date: "",
+    notes: "",
+  });
+  const [splitValues, setSplitValues] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<
     "members" | "expenses" | "balances"
   >("members");
+  const [settlements, setSettlements] = useState<
+    { from: string; to: string; amount: number }[]
+  >([]);
+  const [balances, setBalances] = useState<BalanceEntry[]>([]);
+  const [settlementHistory, setSettlementHistory] = useState<
+    SettlementHistoryItem[]
+  >([]);
+  const [loadingBalances, setLoadingBalances] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
 
   const { id } = useParams();
 
@@ -84,8 +200,19 @@ const [splitValues, setSplitValues] = useState<Record<string, number>>({});
 
   const handleSaveExpense = async () => {
     if (!group) return;
-    console.log(expense);
-    console.log(group);
+
+    if (
+      !expense.title ||
+      !expense.amount ||
+      !expense.paidBy ||
+      expense.participants.length === 0
+    ) {
+      alert(
+        "Please fill in all required expense fields and select at least one participant."
+      );
+      return;
+    }
+
     const { data, error } = await createExpense({
       group_id: group.id,
       title: expense.title,
@@ -106,19 +233,288 @@ const [splitValues, setSplitValues] = useState<Record<string, number>>({});
       return;
     }
 
+    const participantData = expense.participants.map((userId) => ({
+      userId,
+      shareAmount:
+        expense.splitMethod === "equal"
+          ? Number(expense.amount) / Math.max(expense.participants.length, 1)
+          : splitValues[userId] || 0,
+    }));
+
     const { error: participantError } = await addExpenseParticipants(
       data.id,
-      expense.participants
+      participantData
     );
 
     if (participantError) {
-      console.log(participantError);
+      console.log("Participant error:", participantError);
       alert("Expense saved, but participants could not be added");
       return;
     }
 
+    const { data: refreshedExpenses, error: refreshedExpenseError } =
+      await getExpenses(group.id);
+
+    if (!refreshedExpenseError && refreshedExpenses) {
+      setExpenses(refreshedExpenses as ExpenseRecord[]);
+    }
+
+    await calculateSettlements(refreshedExpenses ?? []);
+
     alert("Expense saved successfully");
   };
+
+  const calculateSettlements = async (providedExpenses: ExpenseRecord[] = expenses) => {
+    if (!group || members.length === 0) {
+      setBalances([]);
+      setSettlements([]);
+      return;
+    }
+
+    setLoadingBalances(true);
+    setBalanceError(null);
+
+    try {
+      const expenseList =
+        providedExpenses.length > 0
+          ? providedExpenses
+          : (await getExpenses(group.id)).data ?? [];
+
+      const memberMap = new Map(
+        members.map((member) => [member.profiles.id, member.profiles])
+      );
+
+      const balancesMap: Record<string, { paid: number; owed: number }> = {};
+
+      members.forEach((member) => {
+        balancesMap[member.profiles.id] = { paid: 0, owed: 0 };
+      });
+
+      const participantResults = await Promise.all(
+        expenseList.map(async (expense) => {
+          const { data: participants, error: participantError } =
+            await getExpenseParticipants(expense.id);
+
+          return {
+            expenseId: expense.id,
+            participants: participants ?? [],
+            participantError,
+          };
+        })
+      );
+
+      for (const expense of expenseList) {
+        const paidBy = expense.paid_by;
+
+        if (!balancesMap[paidBy]) {
+          balancesMap[paidBy] = { paid: 0, owed: 0 };
+        }
+
+        balancesMap[paidBy].paid += Number(expense.amount ?? 0);
+
+        const matchingParticipants = participantResults.find(
+          (result) => result.expenseId === expense.id
+        );
+
+        if (matchingParticipants?.participantError) {
+          continue;
+        }
+
+        for (const participant of matchingParticipants?.participants ?? []) {
+          if (!balancesMap[participant.user_id]) {
+            balancesMap[participant.user_id] = { paid: 0, owed: 0 };
+          }
+
+          balancesMap[participant.user_id].owed += Number(
+            participant.share_amount ?? 0
+          );
+        }
+      }
+
+      const balanceList: BalanceEntry[] = members.map((member) => {
+        const userId = member.profiles.id;
+        const profile = memberMap.get(userId) ?? {
+          id: userId,
+          name: "Unknown",
+          email: "",
+          avatar_url: null,
+        };
+
+        const current = balancesMap[userId] ?? { paid: 0, owed: 0 };
+        const paid = Number(current.paid ?? 0);
+        const owed = Number(current.owed ?? 0);
+
+        return {
+          userId,
+          name: profile.name ?? "Unknown",
+          email: profile.email ?? "",
+          avatar_url: profile.avatar_url ?? null,
+          paid,
+          owed,
+          net: calculateNetBalance(paid, owed),
+        };
+      });
+
+      const balancePersonList = balanceList.map(({ userId, net }) => ({
+        userId,
+        net,
+      }));
+
+      const { creditors, debtors } = splitCreditorsAndDebtors(balancePersonList);
+      const sorted = sortBalances(creditors, debtors);
+      const simplified = simplifyDebts(sorted.creditors, sorted.debtors);
+
+      const { data: settlementRows, error: settlementError } = await getSettlements(
+        group.id
+      );
+
+      if (settlementError) {
+        throw settlementError;
+      }
+
+      setBalances(balanceList);
+      setSettlements(simplified);
+      setSettlementHistory(
+        (settlementRows ?? []).map((row) => ({
+          id: Number(row.id),
+          from_user: row.from_user,
+          to_user: row.to_user,
+          amount: Number(row.amount ?? 0),
+          created_at: row.created_at,
+        }))
+      );
+    } catch (error) {
+      console.log("Balance calculation error:", error);
+      setBalanceError("Unable to load balances.");
+    } finally {
+      setLoadingBalances(false);
+    }
+  };
+
+  const handleMarkAsPaid = async (settlement: {
+    from: string;
+    to: string;
+    amount: number;
+  }) => {
+    if (!group) return;
+
+    const { error } = await addSettlement(
+      group.id,
+      settlement.from,
+      settlement.to,
+      settlement.amount
+    );
+
+    if (error) {
+      console.log(error);
+      alert("Unable to mark settlement as paid.");
+      return;
+    }
+
+    await calculateSettlements();
+  };
+
+  const memberNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+
+    profiles.forEach((profile) => {
+      map.set(profile.id, profile.name || "Unknown member");
+    });
+
+    members.forEach((member) => {
+      map.set(member.profiles.id, member.profiles.name || "Unknown member");
+    });
+
+    return map;
+  }, [profiles, members]);
+
+  const monthlySpending = useMemo(() => {
+    const totals = new Map<string, { monthKey: string; month: string; total: number }>();
+
+    expenses.forEach((expense) => {
+      if (!expense.expense_date) return;
+
+      const date = new Date(`${expense.expense_date}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return;
+
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const month = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        year: "numeric",
+      }).format(date);
+      const amount = Number(expense.amount ?? 0);
+
+      const current = totals.get(monthKey) ?? { monthKey, month, total: 0 };
+      current.total += amount;
+      totals.set(monthKey, current);
+    });
+
+    return Array.from(totals.values())
+      .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+      .map(({ month, total }) => ({ month, total }));
+  }, [expenses]);
+
+  const categorySpending = useMemo(() => {
+    const totals = new Map<string, number>();
+
+    expenses.forEach((expense) => {
+      const category = expense.category || "Other";
+      const amount = Number(expense.amount ?? 0);
+      totals.set(category, (totals.get(category) ?? 0) + amount);
+    });
+
+    return Array.from(totals.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [expenses]);
+
+  const topSpender = useMemo(() => {
+    const totals = new Map<string, number>();
+
+    expenses.forEach((expense) => {
+      const userId = expense.paid_by;
+      if (!userId) return;
+
+      const amount = Number(expense.amount ?? 0);
+      totals.set(userId, (totals.get(userId) ?? 0) + amount);
+    });
+
+    return Array.from(totals.entries())
+      .map(([userId, total]) => ({
+        userId,
+        name: memberNameMap.get(userId) ?? "Unknown member",
+        total,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [expenses, memberNameMap]);
+
+  const timelineData = useMemo(() => {
+    const totals = new Map<string, { date: string; label: string; total: number }>();
+
+    expenses.forEach((expense) => {
+      if (!expense.expense_date) return;
+
+      const amount = Number(expense.amount ?? 0);
+      const dateKey = expense.expense_date;
+      const date = new Date(`${dateKey}T00:00:00`);
+
+      if (Number.isNaN(date.getTime())) return;
+
+      const label = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+      }).format(date);
+
+      const current = totals.get(dateKey) ?? { date: dateKey, label, total: 0 };
+      current.total += amount;
+      current.label = label;
+      totals.set(dateKey, current);
+    });
+
+    return Array.from(totals.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(({ label, total }) => ({ date: label, total }));
+  }, [expenses]);
 
   useEffect(() => {
     async function loadGroup() {
@@ -137,7 +533,24 @@ const [splitValues, setSplitValues] = useState<Record<string, number>>({});
         await getGroupMembers(Number(id));
 
       if (!memberError && memberData) {
-        setMembers(memberData as any);
+        const rows = memberData as unknown as GroupMemberRow[];
+        const normalizedMembers: Member[] = rows.map((row, index) => {
+          const profile = Array.isArray(row.profiles)
+            ? row.profiles[0] ?? null
+            : row.profiles ?? null;
+
+          return {
+            id: index,
+            profiles: {
+              id: row.user_id ?? profile?.id ?? "",
+              name: profile?.name ?? "Unknown member",
+              email: profile?.email ?? "",
+              avatar_url: profile?.avatar_url ?? null,
+            },
+          };
+        });
+
+        setMembers(normalizedMembers);
       }
 
       const { data: profileData, error: profileError } =
@@ -148,10 +561,23 @@ const [splitValues, setSplitValues] = useState<Record<string, number>>({});
       } else {
         setProfiles(profileData ?? []);
       }
+
+      const { data: expenseData, error: expenseError } =
+        await getExpenses(Number(id));
+
+      if (!expenseError && expenseData) {
+        setExpenses(expenseData as ExpenseRecord[]);
+      }
     }
 
     loadGroup();
   }, [id]);
+
+  useEffect(() => {
+    if (group && members.length > 0) {
+      void calculateSettlements(expenses);
+    }
+  }, [group, members, expenses]);
 
   return (
     <div className="max-w-3xl mx-auto p-8">
@@ -490,17 +916,314 @@ const [splitValues, setSplitValues] = useState<Record<string, number>>({});
 
         )}
 
-        {activeTab === "balances" && (
-          <div className="mt-8 rounded-lg border p-8 text-center">
-            <h2 className="text-2xl font-semibold">
-              Balances
-            </h2>
+      {activeTab === "balances" && (
+        <div className="mt-8 space-y-8">
+          <div>
+            <h2 className="mb-4 text-xl font-semibold">BALANCE SUMMARY</h2>
 
-            <p className="mt-3 text-gray-500">
-              Coming Soon
-            </p>
+            {loadingBalances ? (
+              <p className="text-gray-500">Loading balances...</p>
+            ) : balanceError ? (
+              <p className="text-red-500">{balanceError}</p>
+            ) : balances.length === 0 ? (
+              <p className="text-gray-500">No balances available yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {balances.map((balance) => {
+                  const name = balance.name || "Unknown user";
+                  const netLabel = formatSignedCurrency(balance.net);
+
+                  return (
+                    <div
+                      key={balance.userId}
+                      className="flex items-center justify-between rounded-lg border p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-medium text-gray-700">
+                          {balance.avatar_url ? (
+                            <img
+                              src={balance.avatar_url}
+                              alt={name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            name.charAt(0).toUpperCase()
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="font-medium">{name}</p>
+                          <p className="text-sm text-gray-500">{balance.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="text-right text-sm">
+                        <p>Paid: {formatCurrency(balance.paid)}</p>
+                        <p>Owes: {formatCurrency(balance.owed)}</p>
+                        <p
+                          className={
+                            balance.net > 0
+                              ? "text-green-600"
+                              : balance.net < 0
+                              ? "text-red-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          {netLabel}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+
+          <div>
+            <h2 className="mb-4 text-xl font-semibold">SETTLEMENTS</h2>
+
+            {settlements.length === 0 ? (
+              <p className="text-gray-500">Everyone is settled up.</p>
+            ) : (
+              <div className="space-y-3">
+                {settlements.map((settlement, index) => {
+                  const fromName =
+                    members.find((member) => member.profiles.id === settlement.from)
+                      ?.profiles.name ?? settlement.from;
+                  const toName =
+                    members.find((member) => member.profiles.id === settlement.to)
+                      ?.profiles.name ?? settlement.to;
+
+                  return (
+                    <div
+                      key={`${settlement.from}-${settlement.to}-${index}`}
+                      className="flex items-center justify-between rounded-lg border p-4"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {fromName} owes {toName} {formatCurrency(settlement.amount)}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleMarkAsPaid(settlement)}
+                        className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                      >
+                        Mark as Paid
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h2 className="mb-4 text-xl font-semibold">SETTLEMENT HISTORY</h2>
+
+            {settlementHistory.length === 0 ? (
+              <p className="text-gray-500">No settlement payments recorded yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {settlementHistory.map((row) => {
+                  const fromName =
+                    members.find((member) => member.profiles.id === row.from_user)
+                      ?.profiles.name ?? row.from_user;
+                  const toName =
+                    members.find((member) => member.profiles.id === row.to_user)
+                      ?.profiles.name ?? row.to_user;
+
+                  return (
+                    <div
+                      key={row.id}
+                      className="rounded-lg border p-4"
+                    >
+                      <p className="font-medium">
+                        {fromName} → {toName}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {formatCurrency(row.amount)}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(row.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-10 border-t border-gray-200 pt-8">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Analytics</h2>
+              <p className="text-sm text-gray-500">
+                Understand how your group is spending.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Monthly Spending
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    How much your group spent over time
+                  </p>
+                </div>
+
+                {monthlySpending.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No spending data yet. Add an expense to see analytics.
+                  </p>
+                ) : (
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlySpending}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                        <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                        <YAxis tickLine={false} axisLine={false} />
+                        <Tooltip
+                          formatter={(value) => formatTooltipCurrency(value, "Total")}
+                        />
+                        <Bar dataKey="total" radius={[8, 8, 0, 0]} fill="#2563eb" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Spending by Category
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Where your money is going
+                  </p>
+                </div>
+
+                {categorySpending.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No spending data yet. Add an expense to see analytics.
+                  </p>
+                ) : (
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categorySpending}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={58}
+                          outerRadius={90}
+                          paddingAngle={3}
+                        >
+                          {categorySpending.map((entry, index) => (
+                            <Cell
+                              key={`${entry.name}-${index}`}
+                              fill={PIE_COLORS[index % PIE_COLORS.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value) => formatTooltipCurrency(value, "Total")}
+                        />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Top Spender
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Highest contributor in this group
+                  </p>
+                </div>
+
+                {topSpender.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No spending data yet. Add an expense to see analytics.
+                  </p>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <p className="text-2xl font-semibold text-gray-900">
+                        {topSpender[0].name}
+                      </p>
+                      <p className="text-lg text-blue-600">
+                        {formatCurrency(topSpender[0].total)} paid
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      {topSpender.slice(0, 5).map((person, index) => (
+                        <div
+                          key={`${person.userId}-${index}`}
+                          className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm"
+                        >
+                          <span className="text-gray-600">
+                            {index + 1}. {person.name}
+                          </span>
+                          <span className="font-medium text-gray-900">
+                            {formatCurrency(person.total)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Spending Timeline
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Daily group spending
+                  </p>
+                </div>
+
+                {timelineData.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No spending data yet. Add an expense to see analytics.
+                  </p>
+                ) : (
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={timelineData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                        <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                        <YAxis tickLine={false} axisLine={false} />
+                        <Tooltip
+                          formatter={(value) => formatTooltipCurrency(value, "Amount")}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="total"
+                          stroke="#2563eb"
+                          strokeWidth={3}
+                          dot={{ r: 4, fill: "#2563eb" }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
