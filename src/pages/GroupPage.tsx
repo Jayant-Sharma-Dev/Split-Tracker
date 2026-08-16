@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 import { useParams } from "react-router-dom";
 import {
   Bar,
@@ -137,6 +138,8 @@ const formatTooltipCurrency = (
 };
 
 const GroupPage = () => {
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
   const [group, setGroup] = useState<Group | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -168,6 +171,127 @@ const GroupPage = () => {
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
   const { id } = useParams();
+
+  const findMemberIdByName = (name?: string | null) => {
+    if (!name) return null;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) return null;
+
+    const directMatch = members.find(
+      (member) => member.profiles.id.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (directMatch) {
+      return directMatch.profiles.id;
+    }
+
+    const nameMatch = members.find(
+      (member) =>
+        member.profiles.name.toLowerCase().trim() === trimmedName.toLowerCase()
+    );
+
+    if (!nameMatch) {
+      console.warn(`AI name did not match any group member: "${name}"`);
+      return null;
+    }
+
+    return nameMatch.profiles.id;
+  };
+
+  const mapAiExpenseToForm = (parsedExpense: {
+    title?: string;
+    amount?: number | string;
+    paidBy?: string;
+    participants?: string[];
+    category?: string;
+    date?: string;
+    notes?: string;
+    splitMethod?: string;
+  }) => {
+    const paidById = parsedExpense.paidBy
+      ? findMemberIdByName(parsedExpense.paidBy)
+      : null;
+
+    const participantIds =
+      parsedExpense.participants?.reduce<string[]>((acc, participantName) => {
+        const matchedId = findMemberIdByName(participantName);
+
+        if (matchedId) {
+          acc.push(matchedId);
+        }
+
+        return acc;
+      }, []) ?? [];
+
+    return {
+      title: parsedExpense.title ?? "",
+      amount: String(parsedExpense.amount ?? ""),
+      paidBy: paidById ?? "",
+      splitMethod: parsedExpense.splitMethod ?? "equal",
+      participants: participantIds,
+      category: parsedExpense.category ?? "Other",
+      date: parsedExpense.date ?? new Date().toISOString().split("T")[0],
+      notes: parsedExpense.notes ?? "",
+    };
+  };
+
+  const resetExpenseForm = () => {
+    setExpense({
+      title: "",
+      amount: "",
+      paidBy: "",
+      splitMethod: "equal",
+      participants: [],
+      category: "Food",
+      date: "",
+      notes: "",
+    });
+  };
+
+  const parseExpenseWithAI = async () => {
+    if (!aiInput.trim()) return;
+
+    setAiLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "parse-expense",
+        {
+          body: {
+            text: aiInput,
+          },
+        }
+      );
+
+      if (error) {
+        console.error("AI error:", error);
+        alert("Failed to parse expense");
+        return;
+      }
+
+      const parsed = data?.expense;
+
+      if (!parsed) {
+        alert("AI could not understand the expense");
+        return;
+      }
+
+      const nextExpense = mapAiExpenseToForm(parsed);
+
+      setExpense((currentExpense) => ({
+        ...currentExpense,
+        ...nextExpense,
+      }));
+
+      setShowExpenseForm(true);
+    } catch (error) {
+      console.error(error);
+      alert("Something went wrong");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const handleAddMember = async () => {
     if (!group || !selectedUserId) return;
@@ -213,31 +337,51 @@ const GroupPage = () => {
       return;
     }
 
+    const paidById = findMemberIdByName(expense.paidBy);
+
+    if (!paidById) {
+      alert(
+        `${expense.paidBy} is not a member of this group. Add them to the group first.`
+      );
+      return;
+    }
+
+    const participantIds: string[] = [];
+
+    for (const participant of expense.participants) {
+      const memberId = findMemberIdByName(participant);
+
+      if (!memberId) {
+        alert(
+          `${participant} is not a member of this group. Add them to the group first.`
+        );
+        return;
+      }
+
+      participantIds.push(memberId);
+    }
+
     const { data, error } = await createExpense({
       group_id: group.id,
       title: expense.title,
       amount: Number(expense.amount),
-      paid_by: expense.paidBy,
+      paid_by: paidById,
       category: expense.category,
       expense_date: expense.date,
       notes: expense.notes,
     });
 
-    if (error) {
-      console.log(error);
+    if (error || !data) {
+      console.error("Create expense error:", error);
       alert("Failed to save expense");
       return;
     }
-    if (!data) {
-      alert("Failed to create expense");
-      return;
-    }
 
-    const participantData = expense.participants.map((userId) => ({
+    const participantData = participantIds.map((userId) => ({
       userId,
       shareAmount:
         expense.splitMethod === "equal"
-          ? Number(expense.amount) / Math.max(expense.participants.length, 1)
+          ? Number(expense.amount) / Math.max(participantIds.length, 1)
           : splitValues[userId] || 0,
     }));
 
@@ -261,6 +405,8 @@ const GroupPage = () => {
 
     await calculateSettlements(refreshedExpenses ?? []);
 
+    resetExpenseForm();
+    setShowExpenseForm(false);
     alert("Expense saved successfully");
   };
 
@@ -677,24 +823,35 @@ const GroupPage = () => {
 
         {activeTab === "expenses" && (
           <div className="mt-8">
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">
-                Expenses
-              </h2>
+            <textarea
+              value={aiInput}
+              onChange={(e) => setAiInput(e.target.value)}
+              placeholder="Dinner 1800, paid by Jayant, split with Anhsika and Shorya"
+              className="w-full rounded-xl border border-red-300 p-4"
+              rows={3}
+            />
+
+            <button
+              type="button"
+              disabled={aiLoading || !aiInput.trim()}
+              onClick={parseExpenseWithAI}
+              className="mt-3 rounded-xl bg-blue-600 px-3 py-3 text-white disabled:opacity-50"
+            >
+              {aiLoading ? "Parsing..." : "Parse with AI"}
+            </button>
+
+            <div className="mb-6 mt-3 flex items-center justify-between">
+              <h2 className="text-2xl font-semibold">Expenses</h2>
 
               <button
                 onClick={() => setShowExpenseForm(true)}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
               >
-                Add Expense
+                Add Expense Manually
               </button>
             </div>
 
-            {!showExpenseForm ? (
-              <div className="rounded-lg border p-8 text-center text-gray-500">
-                No expenses yet.
-              </div>
-            ) : (
+            {showExpenseForm ? (
               <div className="space-y-5 rounded-lg border p-6">
                 <div>
                   <label className="mb-2 block font-medium">
@@ -751,95 +908,90 @@ const GroupPage = () => {
                     <option value="">Select payer</option>
 
                     {members.map((member) => (
-                      <option
-                        key={member.id}
-                        value={member.profiles.id}
-                      >
+                      <option key={member.id} value={member.profiles.id}>
                         {member.profiles.name}
                       </option>
                     ))}
                   </select>
                 </div>
+
                 <div>
-  <label className="mb-2 block font-medium">
-    Split Method
-  </label>
+                  <label className="mb-2 block font-medium">
+                    Split Method
+                  </label>
 
-  <select
-    value={expense.splitMethod}
-    onChange={(e) =>
-      setExpense({
-        ...expense,
-        splitMethod: e.target.value,
-      })
-    }
-    className="w-full rounded-lg border px-3 py-2"
-  >
-    <option value="equal">Equal</option>
-    <option value="exact">Exact Amount</option>
-    <option value="percentage">Percentage</option>
-    <option value="shares">Shares</option>
-  </select>
-</div>
+                  <select
+                    value={expense.splitMethod}
+                    onChange={(e) =>
+                      setExpense({
+                        ...expense,
+                        splitMethod: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border px-3 py-2"
+                  >
+                    <option value="equal">Equal</option>
+                    <option value="exact">Exact Amount</option>
+                    <option value="percentage">Percentage</option>
+                    <option value="shares">Shares</option>
+                  </select>
+                </div>
 
-                
- <div>
-  <label className="mb-2 block font-medium">
-    Split Among
-  </label>
+                <div>
+                  <label className="mb-2 block font-medium">
+                    Split Among
+                  </label>
 
-  <div className="space-y-3">
-    {members.map((member) => {
-      const userId = member.profiles.id;
-      const selected = expense.participants.includes(userId);
+                  <div className="space-y-3">
+                    {members.map((member) => {
+                      const userId = member.profiles.id;
+                      const selected = expense.participants.includes(userId);
 
-      return (
-        <div key={userId} className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={(e) => {
-              const updatedParticipants = e.target.checked
-                ? [...expense.participants, userId]
-                : expense.participants.filter((id) => id !== userId);
+                      return (
+                        <div key={userId} className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              const updatedParticipants = e.target.checked
+                                ? [...expense.participants, userId]
+                                : expense.participants.filter((id) => id !== userId);
 
-              setExpense({
-                ...expense,
-                participants: updatedParticipants,
-              });
-            }}
-          />
+                              setExpense({
+                                ...expense,
+                                participants: updatedParticipants,
+                              });
+                            }}
+                          />
 
-          <span className="flex-1">
-            {member.profiles.name}
-          </span>
+                          <span className="flex-1">{member.profiles.name}</span>
 
-          {selected && expense.splitMethod !== "equal" && (
-            <input
-              type="number"
-              min="0"
-              value={splitValues[userId] ?? ""}
-              onChange={(e) =>
-                setSplitValues({
-                  ...splitValues,
-                  [userId]: Number(e.target.value),
-                })
-              }
-              placeholder={
-                expense.splitMethod === "exact"
-                  ? "Amount"
-                  : expense.splitMethod === "percentage"
-                  ? "%"
-                  : "Shares"
-              }
-              className="w-28 rounded-lg border px-3 py-2"
-            />
-          )}
-        </div>
-      );
-    })}
-  </div>
-</div>
+                          {selected && expense.splitMethod !== "equal" && (
+                            <input
+                              type="number"
+                              min="0"
+                              value={splitValues[userId] ?? ""}
+                              onChange={(e) =>
+                                setSplitValues({
+                                  ...splitValues,
+                                  [userId]: Number(e.target.value),
+                                })
+                              }
+                              placeholder={
+                                expense.splitMethod === "exact"
+                                  ? "Amount"
+                                  : expense.splitMethod === "percentage"
+                                    ? "%"
+                                    : "Shares"
+                              }
+                              className="w-28 rounded-lg border px-3 py-2"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div>
                   <label className="mb-2 block font-medium">
@@ -859,6 +1011,7 @@ const GroupPage = () => {
                     <option>Food</option>
                     <option>Travel</option>
                     <option>Shopping</option>
+                    <option>Entertainment</option>
                     <option>Hotel</option>
                     <option>Other</option>
                   </select>
@@ -900,330 +1053,333 @@ const GroupPage = () => {
                   />
                 </div>
 
-
                 <button
                   onClick={handleSaveExpense}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
                 >
                   Save Expense
                 </button>
+
                 <pre className="mt-6 rounded-lg bg-gray-100 p-4 text-sm">
                   {JSON.stringify(expense, null, 2)}
                 </pre>
               </div>
+            ) : (
+              <div className="rounded-lg border p-8 text-center text-gray-500">
+                No expenses yet.
+              </div>
             )}
           </div>
-
         )}
 
-      {activeTab === "balances" && (
-        <div className="mt-8 space-y-8">
-          <div>
-            <h2 className="mb-4 text-xl font-semibold">BALANCE SUMMARY</h2>
+        {activeTab === "balances" && (
+          <div className="mt-8 space-y-8">
+            <div>
+              <h2 className="mb-4 text-xl font-semibold">BALANCE SUMMARY</h2>
 
-            {loadingBalances ? (
-              <p className="text-gray-500">Loading balances...</p>
-            ) : balanceError ? (
-              <p className="text-red-500">{balanceError}</p>
-            ) : balances.length === 0 ? (
-              <p className="text-gray-500">No balances available yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {balances.map((balance) => {
-                  const name = balance.name || "Unknown user";
-                  const netLabel = formatSignedCurrency(balance.net);
+              {loadingBalances ? (
+                <p className="text-gray-500">Loading balances...</p>
+              ) : balanceError ? (
+                <p className="text-red-500">{balanceError}</p>
+              ) : balances.length === 0 ? (
+                <p className="text-gray-500">No balances available yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {balances.map((balance) => {
+                    const name = balance.name || "Unknown user";
+                    const netLabel = formatSignedCurrency(balance.net);
 
-                  return (
-                    <div
-                      key={balance.userId}
-                      className="flex items-center justify-between rounded-lg border p-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-medium text-gray-700">
-                          {balance.avatar_url ? (
-                            <img
-                              src={balance.avatar_url}
-                              alt={name}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            name.charAt(0).toUpperCase()
-                          )}
-                        </div>
-
-                        <div>
-                          <p className="font-medium">{name}</p>
-                          <p className="text-sm text-gray-500">{balance.email}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-right text-sm">
-                        <p>Paid: {formatCurrency(balance.paid)}</p>
-                        <p>Owes: {formatCurrency(balance.owed)}</p>
-                        <p
-                          className={
-                            balance.net > 0
-                              ? "text-green-600"
-                              : balance.net < 0
-                              ? "text-red-600"
-                              : "text-gray-500"
-                          }
-                        >
-                          {netLabel}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold">SETTLEMENTS</h2>
-
-            {settlements.length === 0 ? (
-              <p className="text-gray-500">Everyone is settled up.</p>
-            ) : (
-              <div className="space-y-3">
-                {settlements.map((settlement, index) => {
-                  const fromName =
-                    members.find((member) => member.profiles.id === settlement.from)
-                      ?.profiles.name ?? settlement.from;
-                  const toName =
-                    members.find((member) => member.profiles.id === settlement.to)
-                      ?.profiles.name ?? settlement.to;
-
-                  return (
-                    <div
-                      key={`${settlement.from}-${settlement.to}-${index}`}
-                      className="flex items-center justify-between rounded-lg border p-4"
-                    >
-                      <div>
-                        <p className="font-medium">
-                          {fromName} owes {toName} {formatCurrency(settlement.amount)}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => handleMarkAsPaid(settlement)}
-                        className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                    return (
+                      <div
+                        key={balance.userId}
+                        className="flex items-center justify-between rounded-lg border p-4"
                       >
-                        Mark as Paid
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-medium text-gray-700">
+                            {balance.avatar_url ? (
+                              <img
+                                src={balance.avatar_url}
+                                alt={name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              name.charAt(0).toUpperCase()
+                            )}
+                          </div>
 
-          <div>
-            <h2 className="mb-4 text-xl font-semibold">SETTLEMENT HISTORY</h2>
-
-            {settlementHistory.length === 0 ? (
-              <p className="text-gray-500">No settlement payments recorded yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {settlementHistory.map((row) => {
-                  const fromName =
-                    members.find((member) => member.profiles.id === row.from_user)
-                      ?.profiles.name ?? row.from_user;
-                  const toName =
-                    members.find((member) => member.profiles.id === row.to_user)
-                      ?.profiles.name ?? row.to_user;
-
-                  return (
-                    <div
-                      key={row.id}
-                      className="rounded-lg border p-4"
-                    >
-                      <p className="font-medium">
-                        {fromName} → {toName}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {formatCurrency(row.amount)}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {new Date(row.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-10 border-t border-gray-200 pt-8">
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Analytics</h2>
-              <p className="text-sm text-gray-500">
-                Understand how your group is spending.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Monthly Spending
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    How much your group spent over time
-                  </p>
-                </div>
-
-                {monthlySpending.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No spending data yet. Add an expense to see analytics.
-                  </p>
-                ) : (
-                  <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={monthlySpending}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                        <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                        <YAxis tickLine={false} axisLine={false} />
-                        <Tooltip
-                          formatter={(value) => formatTooltipCurrency(value, "Total")}
-                        />
-                        <Bar dataKey="total" radius={[8, 8, 0, 0]} fill="#2563eb" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Spending by Category
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    Where your money is going
-                  </p>
-                </div>
-
-                {categorySpending.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No spending data yet. Add an expense to see analytics.
-                  </p>
-                ) : (
-                  <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={categorySpending}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={58}
-                          outerRadius={90}
-                          paddingAngle={3}
-                        >
-                          {categorySpending.map((entry, index) => (
-                            <Cell
-                              key={`${entry.name}-${index}`}
-                              fill={PIE_COLORS[index % PIE_COLORS.length]}
-                            />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value) => formatTooltipCurrency(value, "Total")}
-                        />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Top Spender
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    Highest contributor in this group
-                  </p>
-                </div>
-
-                {topSpender.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No spending data yet. Add an expense to see analytics.
-                  </p>
-                ) : (
-                  <>
-                    <div className="mb-4">
-                      <p className="text-2xl font-semibold text-gray-900">
-                        {topSpender[0].name}
-                      </p>
-                      <p className="text-lg text-blue-600">
-                        {formatCurrency(topSpender[0].total)} paid
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      {topSpender.slice(0, 5).map((person, index) => (
-                        <div
-                          key={`${person.userId}-${index}`}
-                          className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm"
-                        >
-                          <span className="text-gray-600">
-                            {index + 1}. {person.name}
-                          </span>
-                          <span className="font-medium text-gray-900">
-                            {formatCurrency(person.total)}
-                          </span>
+                          <div>
+                            <p className="font-medium">{name}</p>
+                            <p className="text-sm text-gray-500">{balance.email}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+
+                        <div className="text-right text-sm">
+                          <p>Paid: {formatCurrency(balance.paid)}</p>
+                          <p>Owes: {formatCurrency(balance.owed)}</p>
+                          <p
+                            className={
+                              balance.net > 0
+                                ? "text-green-600"
+                                : balance.net < 0
+                                  ? "text-red-600"
+                                  : "text-gray-500"
+                            }
+                          >
+                            {netLabel}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="mb-4 text-xl font-semibold">SETTLEMENTS</h2>
+
+              {settlements.length === 0 ? (
+                <p className="text-gray-500">Everyone is settled up.</p>
+              ) : (
+                <div className="space-y-3">
+                  {settlements.map((settlement, index) => {
+                    const fromName =
+                      members.find((member) => member.profiles.id === settlement.from)
+                        ?.profiles.name ?? settlement.from;
+                    const toName =
+                      members.find((member) => member.profiles.id === settlement.to)
+                        ?.profiles.name ?? settlement.to;
+
+                    return (
+                      <div
+                        key={`${settlement.from}-${settlement.to}-${index}`}
+                        className="flex items-center justify-between rounded-lg border p-4"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {fromName} owes {toName} {formatCurrency(settlement.amount)}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => handleMarkAsPaid(settlement)}
+                          className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                        >
+                          Mark as Paid
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="mb-4 text-xl font-semibold">SETTLEMENT HISTORY</h2>
+
+              {settlementHistory.length === 0 ? (
+                <p className="text-gray-500">No settlement payments recorded yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {settlementHistory.map((row) => {
+                    const fromName =
+                      members.find((member) => member.profiles.id === row.from_user)
+                        ?.profiles.name ?? row.from_user;
+                    const toName =
+                      members.find((member) => member.profiles.id === row.to_user)
+                        ?.profiles.name ?? row.to_user;
+
+                    return (
+                      <div
+                        key={row.id}
+                        className="rounded-lg border p-4"
+                      >
+                        <p className="font-medium">
+                          {fromName} → {toName}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {formatCurrency(row.amount)}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(row.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-10 border-t border-gray-200 pt-8">
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Analytics</h2>
+                <p className="text-sm text-gray-500">
+                  Understand how your group is spending.
+                </p>
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Spending Timeline
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    Daily group spending
-                  </p>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 bg-white p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Monthly Spending
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      How much your group spent over time
+                    </p>
+                  </div>
+
+                  {monthlySpending.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No spending data yet. Add an expense to see analytics.
+                    </p>
+                  ) : (
+                    <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthlySpending}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                          <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                          <YAxis tickLine={false} axisLine={false} />
+                          <Tooltip
+                            formatter={(value) => formatTooltipCurrency(value, "Total")}
+                          />
+                          <Bar dataKey="total" radius={[8, 8, 0, 0]} fill="#2563eb" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                 </div>
 
-                {timelineData.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No spending data yet. Add an expense to see analytics.
-                  </p>
-                ) : (
-                  <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={timelineData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                        <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                        <YAxis tickLine={false} axisLine={false} />
-                        <Tooltip
-                          formatter={(value) => formatTooltipCurrency(value, "Amount")}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="total"
-                          stroke="#2563eb"
-                          strokeWidth={3}
-                          dot={{ r: 4, fill: "#2563eb" }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                <div className="rounded-xl border border-gray-200 bg-white p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Spending by Category
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Where your money is going
+                    </p>
                   </div>
-                )}
+
+                  {categorySpending.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No spending data yet. Add an expense to see analytics.
+                    </p>
+                  ) : (
+                    <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={categorySpending}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={58}
+                            outerRadius={90}
+                            paddingAngle={3}
+                          >
+                            {categorySpending.map((entry, index) => (
+                              <Cell
+                                key={`${entry.name}-${index}`}
+                                fill={PIE_COLORS[index % PIE_COLORS.length]}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value) => formatTooltipCurrency(value, "Total")}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 bg-white p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Top Spender
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Highest contributor in this group
+                    </p>
+                  </div>
+
+                  {topSpender.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No spending data yet. Add an expense to see analytics.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <p className="text-2xl font-semibold text-gray-900">
+                          {topSpender[0].name}
+                        </p>
+                        <p className="text-lg text-blue-600">
+                          {formatCurrency(topSpender[0].total)} paid
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {topSpender.slice(0, 5).map((person, index) => (
+                          <div
+                            key={`${person.userId}-${index}`}
+                            className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm"
+                          >
+                            <span className="text-gray-600">
+                              {index + 1}. {person.name}
+                            </span>
+                            <span className="font-medium text-gray-900">
+                              {formatCurrency(person.total)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Spending Timeline
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Daily group spending
+                    </p>
+                  </div>
+
+                  {timelineData.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No spending data yet. Add an expense to see analytics.
+                    </p>
+                  ) : (
+                    <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={timelineData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                          <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                          <YAxis tickLine={false} axisLine={false} />
+                          <Tooltip
+                            formatter={(value) => formatTooltipCurrency(value, "Amount")}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="total"
+                            stroke="#2563eb"
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: "#2563eb" }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );
