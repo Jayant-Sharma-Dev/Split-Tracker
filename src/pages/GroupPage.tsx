@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getGroup } from "../services/group";
+import { getGroup, updateGroup } from "../services/group";
 import { getProfiles } from "../services/profile";
 import { addMember, getGroupMembers } from "../services/groupMember";
 import { createExpense, getExpenses } from "../services/expense";
@@ -169,6 +169,8 @@ const GroupPage = () => {
   >([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [isEditingGroupName, setIsEditingGroupName] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState("");
 
   const { id } = useParams();
 
@@ -560,6 +562,30 @@ const GroupPage = () => {
     await calculateSettlements();
   };
 
+  const handleGroupNameSave = async () => {
+    if (!group) return;
+
+    const trimmedName = groupNameInput.trim();
+
+    if (!trimmedName) {
+      alert("Please enter a group name.");
+      return;
+    }
+
+    const { error } = await updateGroup(group.id, trimmedName);
+
+    if (error) {
+      console.log(error.message);
+      alert("Unable to update group name.");
+      return;
+    }
+
+    setGroup((currentGroup) =>
+      currentGroup ? { ...currentGroup, name: trimmedName } : currentGroup
+    );
+    setIsEditingGroupName(false);
+  };
+
   const memberNameMap = useMemo(() => {
     const map = new Map<string, string>();
 
@@ -725,10 +751,56 @@ const GroupPage = () => {
     }
   }, [group, members, expenses]);
 
+  useEffect(() => {
+    if (group) {
+      setGroupNameInput(group.name);
+      setIsEditingGroupName(false);
+    }
+  }, [group]);
+
   return (
     <div className="max-w-3xl mx-auto p-8">
       <div className="rounded-xl border bg-white p-6 shadow-md">
-        <h1 className="text-3xl font-bold">{group?.name}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          {isEditingGroupName ? (
+            <>
+              <input
+                type="text"
+                value={groupNameInput}
+                onChange={(e) => setGroupNameInput(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-3xl font-bold focus:border-blue-500 focus:outline-none"
+              />
+
+              <button
+                onClick={handleGroupNameSave}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Save
+              </button>
+
+              <button
+                onClick={() => {
+                  setGroupNameInput(group?.name ?? "");
+                  setIsEditingGroupName(false);
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <h1 className="text-3xl font-bold">{group?.name}</h1>
+
+              <button
+                onClick={() => setIsEditingGroupName(true)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Rename
+              </button>
+            </>
+          )}
+        </div>
 
         <div className="mt-4 space-y-2 text-gray-700">
           <p>

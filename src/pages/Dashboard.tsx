@@ -17,6 +17,7 @@ type Group = {
 
 const Dashboard = () => {
   const [groups, setGroups] = useState<Group[]>([]);
+  const [newGroupName, setNewGroupName] = useState("Trip Goa");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -38,13 +39,21 @@ const Dashboard = () => {
   const handleCreate = async () => {
     if (!user) return;
 
-    const { error } = await createGroup("Trip Goa", user.id);
+    const trimmedName = newGroupName.trim();
+
+    if (!trimmedName) {
+      alert("Please enter a group name.");
+      return;
+    }
+
+    const { error } = await createGroup(trimmedName, user.id);
 
     if (error) {
       console.log(error.message);
       return;
     }
 
+    setNewGroupName("Trip Goa");
     loadGroups();
   };
 
@@ -59,8 +68,14 @@ const Dashboard = () => {
     loadGroups();
   };
 
-  const handleUpdate = async (id: number) => {
-    const { error } = await updateGroup(id, "Updated Goa Trip");
+  const handleUpdate = async (group: Group) => {
+    const nextName = window.prompt("Rename group", group.name)?.trim();
+
+    if (!nextName) {
+      return;
+    }
+
+    const { error } = await updateGroup(group.id, nextName);
 
     if (error) {
       console.log(error.message);
@@ -80,12 +95,22 @@ const Dashboard = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-        >
-          + Create Group
-        </button>
+        <div className="flex w-full max-w-lg items-center gap-2 sm:justify-end">
+          <input
+            type="text"
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+            placeholder="Enter group name"
+            className="w-full min-w-0 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          />
+
+          <button
+            onClick={handleCreate}
+            className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition duration-150 hover:bg-blue-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-200 hover:cursor-pointer"
+          >
+            + Create
+          </button>
+        </div>
       </div>
 
       <div className="mb-6">
@@ -111,7 +136,7 @@ const Dashboard = () => {
             <div
               key={group.id}
               onClick={() => navigate(`/group/${group.id}`)}
-              className="group cursor-pointer rounded-xl border border-gray-200 bg-white p-5 transition duration-150 hover:-translate-y-px hover:border-blue-300 hover:shadow-sm"
+              className="group cursor-pointer rounded-xl border border-gray-200 bg-white p-5 transition duration-150 hover:-translate-y-px hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
@@ -136,7 +161,7 @@ const Dashboard = () => {
                       e.stopPropagation();
                       navigate(`/group/${group.id}`);
                     }}
-                    className="text-sm text-gray-500 transition group-hover:text-blue-600"
+                    className="cursor-pointer text-sm text-gray-500 transition hover:text-blue-600 group-hover:text-blue-600"
                   >
                     View group →
                   </button>
@@ -146,9 +171,9 @@ const Dashboard = () => {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleUpdate(group.id);
+                        handleUpdate(group);
                       }}
-                      className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                      className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900"
                     >
                       Rename
                     </button>
@@ -159,7 +184,7 @@ const Dashboard = () => {
                         e.stopPropagation();
                         handleDelete(group.id);
                       }}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
+                      className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-100 hover:text-red-700"
                     >
                       Delete
                     </button>

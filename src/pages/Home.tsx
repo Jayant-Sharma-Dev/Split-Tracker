@@ -52,7 +52,7 @@ const Home = () => {
               setAuthView("login");
               setIsAuthOpen(true);
             }}
-            className="mt-9 inline-flex items-center rounded-xl bg-black px-6 py-3 text-sm font-medium text-white transition hover:-translate-y-0.5 hover:bg-gray-800"
+            className="mt-9 inline-flex items-center rounded-xl bg-black px-6 py-3 text-sm font-medium text-white transition hover:-translate-y-0.5 hover:bg-gray-800 hover:cursor-pointer"
           >
             Get Started
             <span className="ml-2">→</span>
