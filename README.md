@@ -2,7 +2,7 @@
 
 A modern expense-splitting application for groups to track shared expenses, calculate balances, and manage settlements.
 
-**Live Demo:** https://split-tracker-phi.vercel.app/
+**Live Demo:** [https://split-tracker-phi.vercel.app/](https://split-mint-ruby.vercel.app/)
 
 ## ✨ Features
 
