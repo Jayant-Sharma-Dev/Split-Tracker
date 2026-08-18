@@ -692,10 +692,6 @@ const GroupPage = () => {
 
         <div className="mt-4 space-y-2 text-gray-700">
           <p>
-            <span className="font-semibold">Group ID:</span> {group?.id}
-          </p>
-
-          <p>
             <span className="font-semibold">Created By:</span>{" "}
             {createdByName}
           </p>
