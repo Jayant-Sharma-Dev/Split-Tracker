@@ -13,6 +13,7 @@ export async function addSettlement(
       from_user: fromUser,
       to_user: toUser,
       amount,
+      settled_at: new Date().toISOString(),
     });
 }
 
@@ -21,5 +22,5 @@ export async function getSettlements(groupId: number) {
     .from("settlements")
     .select("*")
     .eq("group_id", groupId)
-    .order("created_at", { ascending: false });
+    .order("settled_at", { ascending: false });
 }

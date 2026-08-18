@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getGroup, updateGroup } from "../services/group";
+import { getGroup } from "../services/group";
 import { getProfiles } from "../services/profile";
 import { addMember, getGroupMembers } from "../services/groupMember";
 import { createExpense, getExpenses } from "../services/expense";
@@ -25,7 +25,6 @@ import {
   addExpenseParticipants,
   getExpenseParticipants,
 } from "../services/expenseParticipants";
-import { addSettlement, getSettlements } from "../services/settlements";
 import {
   calculateNetBalance,
   splitCreditorsAndDebtors,
@@ -75,14 +74,6 @@ interface BalanceEntry {
   paid: number;
   owed: number;
   net: number;
-}
-
-interface SettlementHistoryItem {
-  id: number;
-  from_user: string;
-  to_user: string;
-  amount: number;
-  created_at: string;
 }
 
 interface ExpenseRecord {
@@ -160,19 +151,24 @@ const GroupPage = () => {
   const [activeTab, setActiveTab] = useState<
     "members" | "expenses" | "balances"
   >("members");
-  const [settlements, setSettlements] = useState<
-    { from: string; to: string; amount: number }[]
-  >([]);
   const [balances, setBalances] = useState<BalanceEntry[]>([]);
-  const [settlementHistory, setSettlementHistory] = useState<
-    SettlementHistoryItem[]
-  >([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
-  const [isEditingGroupName, setIsEditingGroupName] = useState(false);
-  const [groupNameInput, setGroupNameInput] = useState("");
 
   const { id } = useParams();
+
+  const createdByName = useMemo(() => {
+    if (!group?.created_by) return "Unknown";
+
+    const profileMatch = profiles.find((profile) => profile.id === group.created_by);
+    if (profileMatch?.name) return profileMatch.name;
+
+    const memberMatch = members.find(
+      (member) => member.profiles.id === group.created_by
+    );
+
+    return memberMatch?.profiles.name ?? group.created_by;
+  }, [group?.created_by, profiles, members]);
 
   const findMemberIdByName = (name?: string | null) => {
     if (!name) return null;
@@ -415,7 +411,6 @@ const GroupPage = () => {
   const calculateSettlements = async (providedExpenses: ExpenseRecord[] = expenses) => {
     if (!group || members.length === 0) {
       setBalances([]);
-      setSettlements([]);
       return;
     }
 
@@ -512,78 +507,15 @@ const GroupPage = () => {
       const sorted = sortBalances(creditors, debtors);
       const simplified = simplifyDebts(sorted.creditors, sorted.debtors);
 
-      const { data: settlementRows, error: settlementError } = await getSettlements(
-        group.id
-      );
-
-      if (settlementError) {
-        throw settlementError;
-      }
-
       setBalances(balanceList);
-      setSettlements(simplified);
-      setSettlementHistory(
-        (settlementRows ?? []).map((row) => ({
-          id: Number(row.id),
-          from_user: row.from_user,
-          to_user: row.to_user,
-          amount: Number(row.amount ?? 0),
-          created_at: row.created_at,
-        }))
-      );
+      // settlement section removed intentionally
+      void simplified;
     } catch (error) {
       console.log("Balance calculation error:", error);
       setBalanceError("Unable to load balances.");
     } finally {
       setLoadingBalances(false);
     }
-  };
-
-  const handleMarkAsPaid = async (settlement: {
-    from: string;
-    to: string;
-    amount: number;
-  }) => {
-    if (!group) return;
-
-    const { error } = await addSettlement(
-      group.id,
-      settlement.from,
-      settlement.to,
-      settlement.amount
-    );
-
-    if (error) {
-      console.log(error);
-      alert("Unable to mark settlement as paid.");
-      return;
-    }
-
-    await calculateSettlements();
-  };
-
-  const handleGroupNameSave = async () => {
-    if (!group) return;
-
-    const trimmedName = groupNameInput.trim();
-
-    if (!trimmedName) {
-      alert("Please enter a group name.");
-      return;
-    }
-
-    const { error } = await updateGroup(group.id, trimmedName);
-
-    if (error) {
-      console.log(error.message);
-      alert("Unable to update group name.");
-      return;
-    }
-
-    setGroup((currentGroup) =>
-      currentGroup ? { ...currentGroup, name: trimmedName } : currentGroup
-    );
-    setIsEditingGroupName(false);
   };
 
   const memberNameMap = useMemo(() => {
@@ -751,55 +683,11 @@ const GroupPage = () => {
     }
   }, [group, members, expenses]);
 
-  useEffect(() => {
-    if (group) {
-      setGroupNameInput(group.name);
-      setIsEditingGroupName(false);
-    }
-  }, [group]);
-
   return (
     <div className="max-w-3xl mx-auto p-8">
-      <div className="rounded-xl border bg-white p-6 shadow-md">
+      <div className="rounded-3xl border-2 border-gray-200 bg-white p-6 shadow-md">
         <div className="flex flex-wrap items-center gap-3">
-          {isEditingGroupName ? (
-            <>
-              <input
-                type="text"
-                value={groupNameInput}
-                onChange={(e) => setGroupNameInput(e.target.value)}
-                className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-3xl font-bold focus:border-blue-500 focus:outline-none"
-              />
-
-              <button
-                onClick={handleGroupNameSave}
-                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                Save
-              </button>
-
-              <button
-                onClick={() => {
-                  setGroupNameInput(group?.name ?? "");
-                  setIsEditingGroupName(false);
-                }}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <h1 className="text-3xl font-bold">{group?.name}</h1>
-
-              <button
-                onClick={() => setIsEditingGroupName(true)}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-              >
-                Rename
-              </button>
-            </>
-          )}
+          <h1 className="text-3xl font-bold">{group?.name}</h1>
         </div>
 
         <div className="mt-4 space-y-2 text-gray-700">
@@ -809,11 +697,11 @@ const GroupPage = () => {
 
           <p>
             <span className="font-semibold">Created By:</span>{" "}
-            {group?.created_by}
+            {createdByName}
           </p>
         </div>
 
-        <div className="mt-8 flex gap-2 border-b pb-3">
+        <div className="mt-8 flex justify-center sm:justify-start gap-3 border-b pb-3">
           <button
             onClick={() => setActiveTab("members")}
             className={`rounded-md px-4 py-2 text-sm font-medium ${activeTab === "members"
@@ -868,7 +756,7 @@ const GroupPage = () => {
 
               <button
                 onClick={handleAddMember}
-                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 hover:cursor-pointer"
               >
                 Add Member
               </button>
@@ -885,7 +773,6 @@ const GroupPage = () => {
                     key={member.id}
                     name={member.profiles.name}
                     email={member.profiles.email}
-                    balance={0}
                   />
                 ))}
               </div>
@@ -907,17 +794,17 @@ const GroupPage = () => {
               type="button"
               disabled={aiLoading || !aiInput.trim()}
               onClick={parseExpenseWithAI}
-              className="mt-3 rounded-xl bg-blue-600 px-3 py-3 text-white disabled:opacity-50"
+              className="hover:cursor-pointer mt-3 rounded-xl bg-blue-600 px-3 py-3 text-white disabled:opacity-50"
             >
               {aiLoading ? "Parsing..." : "Parse with AI"}
             </button>
 
-            <div className="mb-6 mt-3 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Expenses</h2>
+            <div className="mb-6 mt-3 flex  gap-4 flex-col">
+              <h2 className="text-2xl font-semibold ">Expenses</h2>
 
               <button
                 onClick={() => setShowExpenseForm(true)}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                className=" rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
               >
                 Add Expense Manually
               </button>
@@ -1127,17 +1014,13 @@ const GroupPage = () => {
 
                 <button
                   onClick={handleSaveExpense}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 hover:cursor-pointer"
                 >
                   Save Expense
                 </button>
-
-                <pre className="mt-6 rounded-lg bg-gray-100 p-4 text-sm">
-                  {JSON.stringify(expense, null, 2)}
-                </pre>
               </div>
             ) : (
-              <div className="rounded-lg border p-8 text-center text-gray-500">
+              <div className="rounded-lg border border-gray-300 p-8 text-center text-gray-500">
                 No expenses yet.
               </div>
             )}
@@ -1164,7 +1047,7 @@ const GroupPage = () => {
                     return (
                       <div
                         key={balance.userId}
-                        className="flex items-center justify-between rounded-lg border p-4"
+                        className="flex flex-col gap-3 rounded-lg border border-gray-300 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4"
                       >
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-medium text-gray-700">
@@ -1179,26 +1062,35 @@ const GroupPage = () => {
                             )}
                           </div>
 
-                          <div>
-                            <p className="font-medium">{name}</p>
-                            <p className="text-sm text-gray-500">{balance.email}</p>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-gray-900">{name}</p>
+                            <p className="truncate text-sm text-gray-500">{balance.email}</p>
                           </div>
                         </div>
 
-                        <div className="text-right text-sm">
-                          <p>Paid: {formatCurrency(balance.paid)}</p>
-                          <p>Owes: {formatCurrency(balance.owed)}</p>
-                          <p
-                            className={
-                              balance.net > 0
-                                ? "text-green-600"
-                                : balance.net < 0
-                                  ? "text-red-600"
-                                  : "text-gray-500"
-                            }
-                          >
-                            {netLabel}
-                          </p>
+                        <div className="grid gap-1 text-sm text-gray-700 sm:text-right">
+                          <div className="flex items-center justify-between gap-4 sm:justify-end">
+                            <span>Paid:</span>
+                            <span className="font-medium">{formatCurrency(balance.paid)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4 sm:justify-end">
+                            <span>Owes:</span>
+                            <span className="font-medium">{formatCurrency(balance.owed)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4 sm:justify-end">
+                            <span className="text-gray-600">Net:</span>
+                            <span
+                              className={
+                                balance.net > 0
+                                  ? "font-semibold text-green-600"
+                                  : balance.net < 0
+                                    ? "font-semibold text-red-600"
+                                    : "font-semibold text-gray-500"
+                              }
+                            >
+                              {netLabel}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1207,80 +1099,6 @@ const GroupPage = () => {
               )}
             </div>
 
-            <div>
-              <h2 className="mb-4 text-xl font-semibold">SETTLEMENTS</h2>
-
-              {settlements.length === 0 ? (
-                <p className="text-gray-500">Everyone is settled up.</p>
-              ) : (
-                <div className="space-y-3">
-                  {settlements.map((settlement, index) => {
-                    const fromName =
-                      members.find((member) => member.profiles.id === settlement.from)
-                        ?.profiles.name ?? settlement.from;
-                    const toName =
-                      members.find((member) => member.profiles.id === settlement.to)
-                        ?.profiles.name ?? settlement.to;
-
-                    return (
-                      <div
-                        key={`${settlement.from}-${settlement.to}-${index}`}
-                        className="flex items-center justify-between rounded-lg border p-4"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {fromName} owes {toName} {formatCurrency(settlement.amount)}
-                          </p>
-                        </div>
-
-                        <button
-                          onClick={() => handleMarkAsPaid(settlement)}
-                          className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
-                        >
-                          Mark as Paid
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <h2 className="mb-4 text-xl font-semibold">SETTLEMENT HISTORY</h2>
-
-              {settlementHistory.length === 0 ? (
-                <p className="text-gray-500">No settlement payments recorded yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {settlementHistory.map((row) => {
-                    const fromName =
-                      members.find((member) => member.profiles.id === row.from_user)
-                        ?.profiles.name ?? row.from_user;
-                    const toName =
-                      members.find((member) => member.profiles.id === row.to_user)
-                        ?.profiles.name ?? row.to_user;
-
-                    return (
-                      <div
-                        key={row.id}
-                        className="rounded-lg border p-4"
-                      >
-                        <p className="font-medium">
-                          {fromName} → {toName}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {formatCurrency(row.amount)}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {new Date(row.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
 
             <div className="mt-10 border-t border-gray-200 pt-8">
               <div className="mb-6">

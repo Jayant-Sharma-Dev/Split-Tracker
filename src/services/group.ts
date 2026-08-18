@@ -12,19 +12,32 @@ export async function createGroup(
   name: string,
   createdBy: string
 ) {
-    console.log("createdBy:", createdBy);
   const { data, error } = await supabase!
     .from("groups")
-    
     .insert({
       name,
       created_by: createdBy,
     })
-    
     .select();
-     
 
-  return { data, error };
+  if (error || !data || data.length === 0) {
+    return { data, error };
+  }
+
+  const newGroupId = data[0].id;
+
+  const { error: memberError } = await supabase!
+    .from("group_members")
+    .insert({
+      group_id: newGroupId,
+      user_id: createdBy,
+    });
+
+  if (memberError) {
+    return { data, error: memberError };
+  }
+
+  return { data, error: null };
 }
 
 export async function deleteGroup(id: number) {

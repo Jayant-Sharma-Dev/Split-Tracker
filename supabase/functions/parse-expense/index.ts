@@ -4,6 +4,32 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Retries the Gemini call if it comes back with a 503 (model temporarily overloaded)
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = 2,
+  delay = 1000
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(url, options);
+
+    if (response.status !== 503) {
+      return response; // success or a non-503 error — return immediately
+    }
+
+    if (attempt < retries) {
+      console.log(`Model overloaded, retrying in ${delay}ms... (attempt ${attempt + 1})`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    } else {
+      return response; // out of retries, return the last (503) response
+    }
+  }
+
+  // unreachable, but keeps TypeScript happy
+  return fetch(url, options);
+}
+
 Deno.serve(async (req) => {
   // Preflight request handle karna zaroori hai
   if (req.method === "OPTIONS") {
@@ -58,11 +84,13 @@ Rules:
 User input:
 ${text}
 `;
- 
-   const MODEL_NAME ="gemini-3.6-flash";
 
-const response = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`,
+    const MODEL_NAME = "gemini-flash-latest";
+
+    console.log("Using Gemini model:", MODEL_NAME);
+
+    const response = await fetchWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -71,14 +99,18 @@ const response = await fetch(
         }),
       }
     );
-  
-    console.log("Using Gemini model:", MODEL_NAME);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Gemini error:", errorText);
+
+      const isOverloaded = response.status === 503;
       return Response.json(
-        { error: "Gemini request failed" },
+        {
+          error: isOverloaded
+            ? "Gemini is temporarily overloaded. Please try again in a few seconds."
+            : "Gemini request failed",
+        },
         { status: 500, headers: corsHeaders }
       );
     }

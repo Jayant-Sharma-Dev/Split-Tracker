@@ -86,11 +86,11 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mb-8 flex flex-col gap-4  sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-center text-3xl font-medium sm:text-5xl text-gray-900">Dashboard</h1>
+          <p className="mt-3 text-center text-sm text-gray-500">
             Manage your shared expenses and settlements.
           </p>
         </div>
@@ -114,29 +114,22 @@ const Dashboard = () => {
       </div>
 
       <div className="mb-6">
-        <h2 className="text-2xl font-semibold text-gray-900">Your Groups</h2>
+        <h2 className="text-2xl font-semibold sm:px-6 text-gray-900">Your Groups</h2>
       </div>
 
       <div className="space-y-4">
         {groups.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center">
+          <div className="rounded-2xl border border-dashed border-gray-600 bg-white px-6 py-8 text-center">
             <p className="text-xl font-semibold text-gray-900">No groups yet</p>
             <p className="mt-2 text-sm text-gray-500">
               Create your first group to start splitting expenses.
             </p>
-            <button
-              onClick={handleCreate}
-              className="mt-6 inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-            >
-              + Create Group
-            </button>
           </div>
         ) : (
           groups.map((group) => (
             <div
               key={group.id}
-              onClick={() => navigate(`/group/${group.id}`)}
-              className="group cursor-pointer rounded-xl border border-gray-200 bg-white p-5 transition duration-150 hover:-translate-y-px hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
+              className="group  rounded-xl border border-gray-200 bg-white p-5 transition duration-150 hover:-translate-y-1 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
@@ -145,7 +138,7 @@ const Dashboard = () => {
                   </div>
 
                   <div>
-                    <div className="text-lg font-semibold text-gray-900 transition group-hover:text-blue-600">
+                    <div className="text-lg font-semibold text-gray-900 transition">
                       {group.name}
                     </div>
                     <div className="mt-1 text-sm text-gray-500">
@@ -154,14 +147,14 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <div className="flex items-center justify-between gap-15 ">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(`/group/${group.id}`);
                     }}
-                    className="cursor-pointer text-sm text-gray-500 transition hover:text-blue-600 group-hover:text-blue-600"
+                    className="cursor-pointer text-sm text-gray-500 transition hover:text-blue-800 "
                   >
                     View group →
                   </button>
@@ -173,7 +166,7 @@ const Dashboard = () => {
                         e.stopPropagation();
                         handleUpdate(group);
                       }}
-                      className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900"
+                      className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-300 hover:text-gray-900"
                     >
                       Rename
                     </button>
@@ -184,7 +177,7 @@ const Dashboard = () => {
                         e.stopPropagation();
                         handleDelete(group.id);
                       }}
-                      className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-100 hover:text-red-700"
+                      className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-200 hover:text-red-700"
                     >
                       Delete
                     </button>
